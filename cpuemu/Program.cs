@@ -4,12 +4,11 @@ namespace cpuemu
 {
     public enum OPCode
     {
-        MovRToR = 0x00, // Move Register Value to Register
-        MovIToR = 0x01, // Move Immidiate Value to Register
-        SaveItoR = 0x02, // Move value (i) to memory location (in r)
-        SaveRtoR = 0x03, // Move value (in r) to memory location (in r)
-        SaveItoI = 0x04, // Move value (i) to memory location (i)
-        SaveRtoI = 0x05, // Move value (in r) to memory location (i)
+        MovWRToR = 0x00, // Move First Word in R to First Word in R
+        MovWIToR = 0x01, // Move I (Word) to First Word In R
+        MovDRToR = 0x02, // Move First DWord in R to First DWord In R
+        MovDIToR = 0x03, // Move I (DWord) to First DWord In R
+        MovQRToR = 0x04, // Move First QWord in R to First 
     }
 
     public enum RegisterCode // One Byte
