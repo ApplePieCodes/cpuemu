@@ -4,15 +4,33 @@ namespace cpuemu
 {
     public enum OPCode
     {
-        MovRToR = 0x00, // Move Register Value to Register
-        MovIToR = 0x01, // Move Immidiate Value to Register
-        SaveItoR = 0x02, // Move value (i) to memory location (in r)
-        SaveRtoR = 0x03, // Move value (in r) to memory location (in r)
-        SaveItoI = 0x04, // Move value (i) to memory location (i)
-        SaveRtoI = 0x05, // Move value (in r) to memory location (i)
+        MovBRToR = 0x00, // Move First Byte in R to First Byte in R
+        MovBIToR = 0x01, // Move I (Byte) to First Byte in R
+        MovWRToR = 0x02, // Move First Word in R to First Word in R
+        MovWIToR = 0x03, // Move I (Word) to First Word in R
+        MovDRToR = 0x04, // Move First DWord in R to First DWord in R
+        MovDIToR = 0x05, // Move I (DWord) to First DWord in R
+        MovRToR = 0x06, // Move R to R
+        MovIToR = 0x07, // Move I (QWord) to R
+        SaveBRToR = 0x08, // Save First Byte in R to Address in R
+        SaveBIToR = 0x09, // Save I (Byte) to Address in R
+        SaveWRToR = 0x0A, // Save First Word in R to Address in R
+        SaveWIToR = 0x0B, // Save I (Word) to Address in R
+        SaveDRToR = 0x0C, // Save First DWord in R to Address in R
+        SaveDIToR = 0x0D, // Save I (DWord) to Address in R
+        SaveRToR = 0x0E, // Save Value in R to Address in R
+        SaveIToR = 0x0F, // Save I (QWord) to Address in R
+        SaveBRToI = 0x10, // Save First Byte in R to Address I
+        SaveBIToI = 0x11, // Save I (Byte) to Address I
+        SaveWRToI = 0x12, // Save First Word in R to Address I
+        SaveWIToI = 0x13, // Save I (Word) to Address I
+        SaveDRToI = 0x14, // Save First DWord in R to Address I
+        SaveDIToI = 0x15, // Save I (DWord) to Address I
+        SaveRToI = 0x16, // Save Value in R to Address I
+        SaveIToI = 0x17, // Save I (QWord) to Address I
     }
 
-    public enum RegisterCode // One Byte
+    public enum RegisterCode : byte // One Byte
     {
         R0 = 0x00,
         R1 = 0x01,
@@ -42,12 +60,29 @@ namespace cpuemu
 
     public class Register : Arguement
     {
-        public RegisterCode register;
+        public RegisterCode Code;
     }
 
-    public class Immidiate : Arguement
+    public abstract class Immidiate : Arguement { }
+
+    public class ImmByte : Immidiate
     {
-        public UInt64 value;
+        public byte Value = 0x00;
+    }
+
+    public class ImmWord : Immidiate
+    {
+        public ushort Value = 0x00;
+    }
+
+    public class ImmDWord : Immidiate
+    {
+        public uint Value = 0x00;
+    }
+
+    public class ImmQWord : Immidiate
+    {
+        public ulong Value = 0x00;
     }
 
     public class CPU
@@ -98,8 +133,56 @@ namespace cpuemu
         public byte[] Bootrom;
         public byte[] Ram;
 
-        public System(byte[] rom, int ramsize = 40)
+        public override string ToString()
         {
+            string retstr = "";
+
+            retstr += "System Snapshot:\n";
+
+            retstr += $"    R0: {Cpu.R0}\n";
+            retstr += $"    R1: {Cpu.R1}\n";
+            retstr += $"    R2: {Cpu.R2}\n";
+            retstr += $"    R3: {Cpu.R3}\n";
+            retstr += $"    R4: {Cpu.R4}\n";
+            retstr += $"    R5: {Cpu.R5}\n";
+            retstr += $"    R6: {Cpu.R6}\n";
+            retstr += $"    R7: {Cpu.R7}\n";
+            retstr += $"    R8: {Cpu.R8}\n";
+            retstr += $"    R9: {Cpu.R9}\n";
+            retstr += $"    FLAGS: {Cpu.Flags}\n";
+            retstr += $"    STACKPOINTER: {Cpu.StackPointer}\n";
+            retstr += $"    STACKSTART: {Cpu.StackStart}\n";
+            retstr += $"    STACKEND: {Cpu.StackEnd}\n";
+            retstr += $"    PROGRAMCOUNTER: {Cpu.ProgramCounter}\n";
+            retstr += $"    PROGRAMSTARTLOCATION: {Cpu.ProgramStartLocation}\n";
+
+            retstr += $"    Ram SnapShot:";
+
+            int bytes = 0;
+
+            for (int i = 0; i < Ram.Length; i++)
+            {
+                if (bytes == 0)
+                {
+                    retstr += "\n        ";
+                }
+                retstr += Ram[i];
+                bytes++;
+                if (bytes == 8)
+                {
+                    bytes = 0;
+                }
+            }
+
+            return retstr;
+        }
+
+        public System(byte[] rom, int ramsize = 0)
+        {
+            if (ramsize == 0)
+            {
+                ramsize = rom.Length + 20;
+            }
             Cpu = new CPU();
             Bootrom = rom;
             Ram = new byte[ramsize];
@@ -107,7 +190,7 @@ namespace cpuemu
 
         public void Run()
         {
-            SaveBootRom();
+            LoadBootRom();
 
             while (Cpu.ProgramCounter < (ulong)Ram.Length)
             {
@@ -115,441 +198,333 @@ namespace cpuemu
 
                 switch (inst.operation)
                 {
+                    case OPCode.MovBRToR:
+                        ExecuteMovBRToR(inst);
+                        break;
+                    case OPCode.MovBIToR:
+                        ExecuteMovBIToR(inst);
+                        break;
+                    case OPCode.MovWIToR:
+                        ExecuteMovWIToR(inst);
+                        break;
+                    case OPCode.MovWRToR:
+                        ExecuteMovWRToR(inst);
+                        break;
+                    case OPCode.MovDRToR:
+                        ExecuteMovDRToR(inst);
+                        break;
+                    case OPCode.MovDIToR:
+                        ExecuteMovDIToR(inst);
+                        break;
                     case OPCode.MovRToR:
-                        ExecuteMovRToR(inst);
+                        ExecuteMovQRToR(inst);
                         break;
                     case OPCode.MovIToR:
-                        ExecuteMovIToR(inst);
+                        ExecuteMovQIToR(inst);
                         break;
-                    case OPCode.SaveItoR:
-                        ExecuteSaveIToR(inst);
+                    case OPCode.SaveIToR:
+                        ExecuteSaveQIToR(inst);
                         break;
-                    case OPCode.SaveRtoR:
-                        ExecuteSaveRToR(inst);
+                    case OPCode.SaveRToR:
+                        ExecuteSaveQRToR(inst);
                         break;
-                    case OPCode.SaveRtoI:
-                        ExecuteSaveRToI(inst);
+                    case OPCode.SaveDIToR:
+                        ExecuteSaveDIToR(inst);
                         break;
-                    case OPCode.SaveItoI:
-                        ExecuteSaveIToI(inst);
+                    case OPCode.SaveDRToR:
+                        ExecuteSaveDRToR(inst);
+                        break;
+                    case OPCode.SaveWIToR:
+                        ExecuteSaveWIToR(inst);
+                        break;
+                    case OPCode.SaveWRToR:
+                        ExecuteSaveWRToR(inst);
+                        break;
+                    case OPCode.SaveBIToR:
+                        ExecuteSaveBIToR(inst);
+                        break;
+                    case OPCode.SaveBRToR:
+                        ExecuteSaveBRToR(inst);
+                        break;
+                    case OPCode.SaveIToI:
+                        ExecuteSaveQIToI(inst);
+                        break;
+                    case OPCode.SaveRToI:
+                        ExecuteSaveQRToI(inst);
+                        break;
+                    case OPCode.SaveDIToI:
+                        ExecuteSaveDIToI(inst);
+                        break;
+                    case OPCode.SaveDRToI:
+                        ExecuteSaveDRToI(inst);
+                        break;
+                    case OPCode.SaveWIToI:
+                        ExecuteSaveWIToI(inst);
+                        break;
+                    case OPCode.SaveWRToI:
+                        ExecuteSaveWRToI(inst);
+                        break;
+                    case OPCode.SaveBIToI:
+                        ExecuteSaveBIToI(inst);
+                        break;
+                    case OPCode.SaveBRToI:
+                        ExecuteSaveBRToI(inst);
                         break;
                 }
             }
         }
 
-        public void ExecuteSaveIToR(Instruction inst) // Reg val to reg
+        #region SaveInst
+        public void ExecuteSaveQIToR(Instruction inst)
         {
-            var valuetomove = (inst.args[0] as Immidiate).value;
-            UInt64 addresstomoveto = 0;
-            switch (((Register)inst.args[1]).register)
-            {
-                case RegisterCode.R0:
-                    addresstomoveto = Cpu.R0;
-                    break;
-                case RegisterCode.R1:
-                    addresstomoveto = Cpu.R1;
-                    break;
-                case RegisterCode.R2:
-                    addresstomoveto = Cpu.R2;
-                    break;
-                case RegisterCode.R3:
-                    addresstomoveto = Cpu.R3;
-                    break;
-                case RegisterCode.R4:
-                    addresstomoveto = Cpu.R4;
-                    break;
-                case RegisterCode.R5:
-                    addresstomoveto = Cpu.R5;
-                    break;
-                case RegisterCode.R6:
-                    addresstomoveto = Cpu.R6;
-                    break;
-                case RegisterCode.R7:
-                    addresstomoveto = Cpu.R7;
-                    break;
-                case RegisterCode.R8:
-                    addresstomoveto = Cpu.R8;
-                    break;
-                case RegisterCode.R9:
-                    addresstomoveto = Cpu.R9;
-                    break;
-                case RegisterCode.Flags:
-                    addresstomoveto = Cpu.Flags;
-                    break;
-                case RegisterCode.StackPointer:
-                    addresstomoveto = Cpu.StackPointer;
-                    break;
-                case RegisterCode.StackStart:
-                    addresstomoveto = Cpu.StackStart;
-                    break;
-                case RegisterCode.StackEnd:
-                    addresstomoveto = Cpu.StackEnd;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    addresstomoveto = Cpu.ProgramStartLocation;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    addresstomoveto = Cpu.ProgramCounter;
-                    break;
-            }
+            ImmQWord source = inst.args[0] as ImmQWord;
+            Register destination = inst.args[1] as Register;
 
-            for (int i = 0; i < 8; i++)
-            {
-                Ram[addresstomoveto + (uint)i] = (byte)((valuetomove >> (i * 8)) & 0xFF);
-            }
+            byte[] bytes = BitConverter.GetBytes(source.Value);
+
+            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 8);
         }
-
-        public void ExecuteSaveRToR(Instruction inst) // Reg val to reg
+        public void ExecuteSaveQRToR(Instruction inst)
         {
-            UInt64 valuetomove = 0;
-            switch (((Register)inst.args[0]).register)
-            {
-                case RegisterCode.R0:
-                    valuetomove = Cpu.R0;
-                    break;
-                case RegisterCode.R1:
-                    valuetomove = Cpu.R1;
-                    break;
-                case RegisterCode.R2:
-                    valuetomove = Cpu.R2;
-                    break;
-                case RegisterCode.R3:
-                    valuetomove = Cpu.R3;
-                    break;
-                case RegisterCode.R4:
-                    valuetomove = Cpu.R4;
-                    break;
-                case RegisterCode.R5:
-                    valuetomove = Cpu.R5;
-                    break;
-                case RegisterCode.R6:
-                    valuetomove = Cpu.R6;
-                    break;
-                case RegisterCode.R7:
-                    valuetomove = Cpu.R7;
-                    break;
-                case RegisterCode.R8:
-                    valuetomove = Cpu.R8;
-                    break;
-                case RegisterCode.R9:
-                    valuetomove = Cpu.R9;
-                    break;
-                case RegisterCode.Flags:
-                    valuetomove = Cpu.Flags;
-                    break;
-                case RegisterCode.StackPointer:
-                    valuetomove = Cpu.StackPointer;
-                    break;
-                case RegisterCode.StackStart:
-                    valuetomove = Cpu.StackStart;
-                    break;
-                case RegisterCode.StackEnd:
-                    valuetomove = Cpu.StackEnd;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    valuetomove = Cpu.ProgramStartLocation;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    valuetomove = Cpu.ProgramCounter;
-                    break;
-            }
-            UInt64 addresstomoveto = 0;
-            switch (((Register)inst.args[1]).register)
-            {
-                case RegisterCode.R0:
-                    addresstomoveto = Cpu.R0;
-                    break;
-                case RegisterCode.R1:
-                    addresstomoveto = Cpu.R1;
-                    break;
-                case RegisterCode.R2:
-                    addresstomoveto = Cpu.R2;
-                    break;
-                case RegisterCode.R3:
-                    addresstomoveto = Cpu.R3;
-                    break;
-                case RegisterCode.R4:
-                    addresstomoveto = Cpu.R4;
-                    break;
-                case RegisterCode.R5:
-                    addresstomoveto = Cpu.R5;
-                    break;
-                case RegisterCode.R6:
-                    addresstomoveto = Cpu.R6;
-                    break;
-                case RegisterCode.R7:
-                    addresstomoveto = Cpu.R7;
-                    break;
-                case RegisterCode.R8:
-                    addresstomoveto = Cpu.R8;
-                    break;
-                case RegisterCode.R9:
-                    addresstomoveto = Cpu.R9;
-                    break;
-                case RegisterCode.Flags:
-                    addresstomoveto = Cpu.Flags;
-                    break;
-                case RegisterCode.StackPointer:
-                    addresstomoveto = Cpu.StackPointer;
-                    break;
-                case RegisterCode.StackStart:
-                    addresstomoveto = Cpu.StackStart;
-                    break;
-                case RegisterCode.StackEnd:
-                    addresstomoveto = Cpu.StackEnd;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    addresstomoveto = Cpu.ProgramStartLocation;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    addresstomoveto = Cpu.ProgramCounter;
-                    break;
-            }
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
 
-            for (int i = 0; i < 8; i++)
-            {
-                Ram[addresstomoveto + (uint)i] = (byte)((valuetomove >> (i * 8)) & 0xFF);
-            }
+            byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
+
+            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 8);
         }
-
-        public void ExecuteSaveIToI(Instruction inst) // Reg val to reg
+        public void ExecuteSaveDIToR(Instruction inst)
         {
-            var valuetomove = (inst.args[0] as Immidiate).value;
-            var addresstomoveto = (inst.args[1] as Immidiate).value;
+            ImmDWord source = inst.args[0] as ImmDWord;
+            Register destination = inst.args[1] as Register;
 
+            byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            for (int i = 0; i < 8; i++)
-            {
-                Ram[addresstomoveto + (uint)i] = (byte)((valuetomove >> (i * 8)) & 0xFF);
-            }
+            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 4);
         }
-
-        public void ExecuteSaveRToI(Instruction inst) // Reg val to reg
+        public void ExecuteSaveDRToR(Instruction inst)
         {
-            UInt64 valuetomove = 0;
-            switch (((Register)inst.args[0]).register)
-            {
-                case RegisterCode.R0:
-                    valuetomove = Cpu.R0;
-                    break;
-                case RegisterCode.R1:
-                    valuetomove = Cpu.R1;
-                    break;
-                case RegisterCode.R2:
-                    valuetomove = Cpu.R2;
-                    break;
-                case RegisterCode.R3:
-                    valuetomove = Cpu.R3;
-                    break;
-                case RegisterCode.R4:
-                    valuetomove = Cpu.R4;
-                    break;
-                case RegisterCode.R5:
-                    valuetomove = Cpu.R5;
-                    break;
-                case RegisterCode.R6:
-                    valuetomove = Cpu.R6;
-                    break;
-                case RegisterCode.R7:
-                    valuetomove = Cpu.R7;
-                    break;
-                case RegisterCode.R8:
-                    valuetomove = Cpu.R8;
-                    break;
-                case RegisterCode.R9:
-                    valuetomove = Cpu.R9;
-                    break;
-                case RegisterCode.Flags:
-                    valuetomove = Cpu.Flags;
-                    break;
-                case RegisterCode.StackPointer:
-                    valuetomove = Cpu.StackPointer;
-                    break;
-                case RegisterCode.StackStart:
-                    valuetomove = Cpu.StackStart;
-                    break;
-                case RegisterCode.StackEnd:
-                    valuetomove = Cpu.StackEnd;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    valuetomove = Cpu.ProgramStartLocation;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    valuetomove = Cpu.ProgramCounter;
-                    break;
-            }
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
 
-            var addresstomoveto = (inst.args[1] as Immidiate).value;
+            byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            for (int i = 0; i < 8; i++)
-            {
-                Ram[addresstomoveto + (uint)i] = (byte)((valuetomove >> (i * 8)) & 0xFF);
-            }
+            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 4);
         }
-
-        public void ExecuteMovRToR(Instruction inst) // Reg val to reg
+        public void ExecuteSaveWIToR(Instruction inst)
         {
-            UInt64 valuetomove = 0;
-            switch (((Register)inst.args[0]).register)
-            {
-                case RegisterCode.R0:
-                    valuetomove = Cpu.R0;
-                    break;
-                case RegisterCode.R1:
-                    valuetomove = Cpu.R1;
-                    break;
-                case RegisterCode.R2:
-                    valuetomove = Cpu.R2;
-                    break;
-                case RegisterCode.R3:
-                    valuetomove = Cpu.R3;
-                    break;
-                case RegisterCode.R4:
-                    valuetomove = Cpu.R4;
-                    break;
-                case RegisterCode.R5:
-                    valuetomove = Cpu.R5;
-                    break;
-                case RegisterCode.R6:
-                    valuetomove = Cpu.R6;
-                    break;
-                case RegisterCode.R7:
-                    valuetomove = Cpu.R7;
-                    break;
-                case RegisterCode.R8:
-                    valuetomove = Cpu.R8;
-                    break;
-                case RegisterCode.R9:
-                    valuetomove = Cpu.R9;
-                    break;
-                case RegisterCode.Flags:
-                    valuetomove = Cpu.Flags;
-                    break;
-                case RegisterCode.StackPointer:
-                    valuetomove = Cpu.StackPointer;
-                    break;
-                case RegisterCode.StackStart:
-                    valuetomove = Cpu.StackStart;
-                    break;
-                case RegisterCode.StackEnd:
-                    valuetomove = Cpu.StackEnd;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    valuetomove = Cpu.ProgramStartLocation;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    valuetomove = Cpu.ProgramCounter;
-                    break;
-            }
-            switch (((Register)inst.args[1]).register)
-            {
-                case RegisterCode.R0:
-                    Cpu.R0 = valuetomove;
-                    break;
-                case RegisterCode.R1:
-                    Cpu.R1 = valuetomove;
-                    break;
-                case RegisterCode.R2:
-                    Cpu.R2 = valuetomove;
-                    break;
-                case RegisterCode.R3:
-                    Cpu.R3 = valuetomove;
-                    break;
-                case RegisterCode.R4:
-                    Cpu.R4 = valuetomove;
-                    break;
-                case RegisterCode.R5:
-                    Cpu.R5 = valuetomove;
-                    break;
-                case RegisterCode.R6:
-                    Cpu.R6 = valuetomove;
-                    break;
-                case RegisterCode.R7:
-                    Cpu.R7 = valuetomove;
-                    break;
-                case RegisterCode.R8:
-                    Cpu.R8 = valuetomove;
-                    break;
-                case RegisterCode.R9:
-                    Cpu.R9 = valuetomove;
-                    break;
-                case RegisterCode.Flags:
-                    Cpu.Flags = valuetomove;
-                    break;
-                case RegisterCode.StackPointer:
-                    Cpu.StackPointer = valuetomove;
-                    break;
-                case RegisterCode.StackStart:
-                    Cpu.StackStart = valuetomove;
-                    break;
-                case RegisterCode.StackEnd:
-                    Cpu.StackEnd = valuetomove;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    Cpu.ProgramStartLocation = valuetomove;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    Cpu.ProgramCounter = valuetomove;
-                    break;
-            }
-        }
+            ImmWord source = inst.args[0] as ImmWord;
+            Register destination = inst.args[1] as Register;
 
-        public void ExecuteMovIToR(Instruction inst) // Immediate val to reg
-        {
-            UInt64 valuetomove = 0;
-            valuetomove = (inst.args[0] as Immidiate).value;
-            switch (((Register)inst.args[1]).register)
-            {
-                case RegisterCode.R0:
-                    Cpu.R0 = valuetomove;
-                    break;
-                case RegisterCode.R1:
-                    Cpu.R1 = valuetomove;
-                    break;
-                case RegisterCode.R2:
-                    Cpu.R2 = valuetomove;
-                    break;
-                case RegisterCode.R3:
-                    Cpu.R3 = valuetomove;
-                    break;
-                case RegisterCode.R4:
-                    Cpu.R4 = valuetomove;
-                    break;
-                case RegisterCode.R5:
-                    Cpu.R5 = valuetomove;
-                    break;
-                case RegisterCode.R6:
-                    Cpu.R6 = valuetomove;
-                    break;
-                case RegisterCode.R7:
-                    Cpu.R7 = valuetomove;
-                    break;
-                case RegisterCode.R8:
-                    Cpu.R8 = valuetomove;
-                    break;
-                case RegisterCode.R9:
-                    Cpu.R9 = valuetomove;
-                    break;
-                case RegisterCode.Flags:
-                    Cpu.Flags = valuetomove;
-                    break;
-                case RegisterCode.StackPointer:
-                    Cpu.StackPointer = valuetomove;
-                    break;
-                case RegisterCode.StackStart:
-                    Cpu.StackStart = valuetomove;
-                    break;
-                case RegisterCode.StackEnd:
-                    Cpu.StackEnd = valuetomove;
-                    break;
-                case RegisterCode.ProgramStartLocation:
-                    Cpu.ProgramStartLocation = valuetomove;
-                    break;
-                case RegisterCode.ProgramCounter:
-                    Cpu.ProgramCounter = valuetomove;
-                    break;
-            }
+            byte[] bytes = BitConverter.GetBytes(source.Value);
+
+            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 2);
         }
+        public void ExecuteSaveWRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
+
+            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 2);
+        }
+        public void ExecuteSaveBIToR(Instruction inst)
+        {
+            ImmByte source = inst.args[0] as ImmByte;
+            Register destination = inst.args[1] as Register;
+
+            Ram[GetRegisterValue(destination.Code)] = source.Value;
+        }
+        public void ExecuteSaveBRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            Ram[GetRegisterValue(destination.Code)] = BitConverter.GetBytes(GetRegisterValue(source.Code))[0];
+        }
+        public void ExecuteSaveQIToI(Instruction inst)
+        {
+            ImmQWord source = inst.args[0] as ImmQWord;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            byte[] bytes = BitConverter.GetBytes(source.Value);
+
+            Array.Copy(bytes, 0, Ram, (long)destination.Value, 8);
+        }
+        public void ExecuteSaveQRToI(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
+
+            Array.Copy(bytes, 0, Ram, (long)destination.Value, 8);
+        }
+        public void ExecuteSaveDIToI(Instruction inst)
+        {
+            ImmDWord source = inst.args[0] as ImmDWord;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            byte[] bytes = BitConverter.GetBytes(source.Value);
+
+            Array.Copy(bytes, 0, Ram, (long)destination.Value, 4);
+        }
+        public void ExecuteSaveDRToI(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
+
+            Array.Copy(bytes, 0, Ram, (long)destination.Value, 4);
+        }
+        public void ExecuteSaveWIToI(Instruction inst)
+        {
+            ImmWord source = inst.args[0] as ImmWord;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            byte[] bytes = BitConverter.GetBytes(source.Value);
+
+            Array.Copy(bytes, 0, Ram, (long)destination.Value, 2);
+        }
+        public void ExecuteSaveWRToI(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
+
+            Array.Copy(bytes, 0, Ram, (long)destination.Value, 2);
+        }
+        public void ExecuteSaveBIToI(Instruction inst)
+        {
+            ImmByte source = inst.args[0] as ImmByte;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            Ram[destination.Value] = source.Value;
+        }
+        public void ExecuteSaveBRToI(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            ImmQWord destination = inst.args[1] as ImmQWord;
+
+            Ram[destination.Value] = BitConverter.GetBytes(GetRegisterValue(source.Code))[0];
+        }
+        #endregion
+
+        #region MovInst
+        public void ExecuteMovQIToR(Instruction inst)
+        {
+            ImmQWord source = inst.args[0] as ImmQWord;
+            Register destination = inst.args[1] as Register;
+
+            SetRegisterValue(destination.Code, source.Value);
+        }
+        public void ExecuteMovQRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            SetRegisterValue(destination.Code, GetRegisterValue(source.Code));
+        }
+        public void ExecuteMovDIToR(Instruction inst)
+        {
+            ImmDWord source = inst.args[0] as ImmDWord;
+            Register destination = inst.args[1] as Register;
+
+            ulong value = GetRegisterValue(destination.Code);
+            uint newvalue = source.Value;
+
+            // Step 1: Clear the first byte
+            value &= 0xFFFFFFFF00000000;
+
+            // Step 2: Set the new byte
+            value |= (ulong)newvalue;
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteMovDRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong value = GetRegisterValue(destination.Code);
+            uint newvalue = (uint)(GetRegisterValue(source.Code) & 0xFFFFFFFF);
+
+            // Step 1: Clear the first byte
+            value &= 0xFFFFFFFF00000000;
+
+            // Step 2: Set the new byte
+            value |= (ulong)newvalue;
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteMovWIToR(Instruction inst)
+        {
+            ImmWord source = inst.args[0] as ImmWord;
+            Register destination = inst.args[1] as Register;
+
+            ulong value = GetRegisterValue(destination.Code);
+            ushort newvalue = source.Value;
+
+            // Step 1: Clear the first byte
+            value &= 0xFFFFFFFFFFFF0000;
+
+            // Step 2: Set the new byte
+            value |= (ulong)newvalue;
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteMovWRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong value = GetRegisterValue(destination.Code);
+            ushort newvalue = (ushort)(GetRegisterValue(source.Code) & 0xFFFF);
+
+            // Step 1: Clear the first byte
+            value &= 0xFFFFFFFFFFFF0000;
+
+            // Step 2: Set the new byte
+            value |= (ulong)newvalue;
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteMovBIToR(Instruction inst)
+        {
+            ImmByte source = inst.args[0] as ImmByte;
+            Register destination = inst.args[1] as Register;
+
+            ulong value = GetRegisterValue(destination.Code);
+            byte newvalue = source.Value;
+
+            // Step 1: Clear the first byte
+            value &= 0xFFFFFFFFFFFFFF00;
+
+            // Step 2: Set the new byte
+            value |= (ulong)newvalue;
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteMovBRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong value = GetRegisterValue(destination.Code);
+            byte newvalue = (byte)(GetRegisterValue(source.Code) & 0xFF);
+
+            // Step 1: Clear the first byte
+            value &= 0xFFFFFFFFFFFFFF00;
+
+            // Step 2: Set the new byte
+            value |= (ulong)newvalue;
+
+            SetRegisterValue(destination.Code, value);
+        }
+        #endregion
 
         public Instruction ParseInstruction()
         {
@@ -564,55 +539,147 @@ namespace cpuemu
 
             switch (inst.operation)
             {
+                case OPCode.MovBRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.MovBIToR:
+                    inst.args.Add(ParseImmediateB());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.MovWRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.MovWIToR:
+                    inst.args.Add(ParseImmediateW());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.MovDRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.MovDIToR:
+                    inst.args.Add(ParseImmediateD());
+                    inst.args.Add(ParseRegister());
+                    break;
                 case OPCode.MovRToR:
                     inst.args.Add(ParseRegister());
                     inst.args.Add(ParseRegister());
                     break;
                 case OPCode.MovIToR:
-                    inst.args.Add(ParseImmediate());
+                    inst.args.Add(ParseImmediateQ());
                     inst.args.Add(ParseRegister());
                     break;
-                case OPCode.SaveItoR:
-                    inst.args.Add(ParseImmediate());
+                case OPCode.SaveIToR:
+                    inst.args.Add(ParseImmediateQ());
                     inst.args.Add(ParseRegister());
                     break;
-                 case OPCode.SaveRtoR:
+                case OPCode.SaveRToR:
                     inst.args.Add(ParseRegister());
                     inst.args.Add(ParseRegister());
                     break;
-                case OPCode.SaveRtoI:
+                case OPCode.SaveDIToR:
+                    inst.args.Add(ParseImmediateD());
                     inst.args.Add(ParseRegister());
-                    inst.args.Add(ParseImmediate());
                     break;
-                case OPCode.SaveItoI:
-                    inst.args.Add(ParseImmediate());
-                    inst.args.Add(ParseImmediate());
+                case OPCode.SaveDRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.SaveWIToR:
+                    inst.args.Add(ParseImmediateW());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.SaveWRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.SaveBIToR:
+                    inst.args.Add(ParseImmediateB());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.SaveBRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.SaveIToI:
+                    inst.args.Add(ParseImmediateQ());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveRToI:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveDIToI:
+                    inst.args.Add(ParseImmediateD());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveDRToI:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveWIToI:
+                    inst.args.Add(ParseImmediateW());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveWRToI:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveBIToI:
+                    inst.args.Add(ParseImmediateB());
+                    inst.args.Add(ParseImmediateQ());
+                    break;
+                case OPCode.SaveBRToI:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseImmediateQ());
                     break;
             }
 
             return inst;
         }
 
-        public Immidiate ParseImmediate()
+        public ImmByte ParseImmediateB()
         {
-            Immidiate imm = new();
+            ImmByte imm = new();
 
-            // Read 8 bytes starting from ProgramCounter
-            byte[] immediateBytes = new byte[8];
-            Array.Copy(Ram, (int)Cpu.ProgramCounter, immediateBytes, 0, 8);
+            imm.Value = Ram[Cpu.ProgramCounter];
 
-            // Reverse for big-endian interpretation
-            Array.Reverse(immediateBytes);
+            Cpu.ProgramCounter++;
 
-            // Convert to UInt64
-            imm.value = BitConverter.ToUInt64(immediateBytes, 0);
+            return imm;
+        }
+        public ImmWord ParseImmediateW()
+        {
+            ImmWord imm = new();
 
-            // Increment ProgramCounter by 8 after reading the immediate
+            imm.Value = BitConverter.ToUInt16(Ram, (int)Cpu.ProgramCounter);
+
+            Cpu.ProgramCounter += 2;
+
+            return imm;
+        }
+        public ImmDWord ParseImmediateD()
+        {
+            ImmDWord imm = new();
+
+            imm.Value = BitConverter.ToUInt32(Ram, (int)Cpu.ProgramCounter);
+
+            Cpu.ProgramCounter += 4;
+
+            return imm;
+        }
+        public ImmQWord ParseImmediateQ()
+        {
+            ImmQWord imm = new();
+
+            imm.Value = BitConverter.ToUInt64(Ram, (int)Cpu.ProgramCounter);
+
             Cpu.ProgramCounter += 8;
 
             return imm;
         }
-
 
         public Register ParseRegister()
         {
@@ -620,7 +687,7 @@ namespace cpuemu
 
             Register reg = new()
             {
-                register = regcode
+                Code = regcode
             };
 
             Cpu.ProgramCounter++;
@@ -628,9 +695,87 @@ namespace cpuemu
             return reg;
         }
 
+        private void SetRegisterValue(RegisterCode code, ulong value)
+        {
+            switch (code)
+            {
+                case RegisterCode.R0:
+                    Cpu.R0 = value;
+                    break;
+                case RegisterCode.R1:
+                    Cpu.R1 = value;
+                    break;
+                case RegisterCode.R2:
+                    Cpu.R2 = value;
+                    break;
+                case RegisterCode.R3:
+                    Cpu.R3 = value;
+                    break;
+                case RegisterCode.R4:
+                    Cpu.R4 = value;
+                    break;
+                case RegisterCode.R5:
+                    Cpu.R5 = value;
+                    break;
+                case RegisterCode.R6:
+                    Cpu.R6 = value;
+                    break;
+                case RegisterCode.R7:
+                    Cpu.R7 = value;
+                    break;
+                case RegisterCode.R8:
+                    Cpu.R8 = value;
+                    break;
+                case RegisterCode.R9:
+                    Cpu.R9 = value;
+                    break;
+                case RegisterCode.Flags:
+                    Cpu.Flags = value;
+                    break;
+                case RegisterCode.StackPointer:
+                    Cpu.StackPointer = value;
+                    break;
+                case RegisterCode.StackStart:
+                    Cpu.StackStart = value;
+                    break;
+                case RegisterCode.StackEnd:
+                    Cpu.StackEnd = value;
+                    break;
+                case RegisterCode.ProgramStartLocation:
+                    Cpu.ProgramStartLocation = value;
+                    break;
+                case RegisterCode.ProgramCounter:
+                    Cpu.ProgramCounter = value;
+                    break;
+            }
+        }
+
+        private ulong GetRegisterValue(RegisterCode code)
+        {
+            return code switch
+            {
+                RegisterCode.R0 => Cpu.R0,
+                RegisterCode.R1 => Cpu.R1,
+                RegisterCode.R2 => Cpu.R2,
+                RegisterCode.R3 => Cpu.R3,
+                RegisterCode.R4 => Cpu.R4,
+                RegisterCode.R5 => Cpu.R5,
+                RegisterCode.R6 => Cpu.R6,
+                RegisterCode.R7 => Cpu.R7,
+                RegisterCode.R8 => Cpu.R8,
+                RegisterCode.R9 => Cpu.R9,
+                RegisterCode.Flags => Cpu.Flags,
+                RegisterCode.StackPointer => Cpu.StackPointer,
+                RegisterCode.StackStart => Cpu.StackStart,
+                RegisterCode.StackEnd => Cpu.StackEnd,
+                RegisterCode.ProgramStartLocation => Cpu.ProgramStartLocation,
+                RegisterCode.ProgramCounter => Cpu.ProgramCounter,
+                _ => 0
+            };
+        }
 
 
-        public bool SaveBootRom()
+        public bool LoadBootRom()
         {
             if (Bootrom.Length > Ram.Length)
             {
@@ -641,7 +786,6 @@ namespace cpuemu
             int pos = Ram.Length - Bootrom.Length;
             Array.Copy(Bootrom, 0, Ram, pos, Bootrom.Length);
 
-            // Explicitly cast 'pos' to UInt64
             Cpu.ProgramStartLocation = (UInt64)pos;
             Cpu.ProgramCounter = Cpu.ProgramStartLocation;
 
@@ -649,18 +793,14 @@ namespace cpuemu
         }
     }
 
-    public class Test()
+    public class Test
     {
         public static void Main()
         {
-            System sys = new(File.ReadAllBytes(@"C:\Users\Liam Greenway\Downloads\Romtest1.xer"));
+            System sys = new([]); // Move Hello To Registers
             sys.Run();
 
-            Console.WriteLine("TraceLog");
-
-            foreach (byte b in sys.Ram) {
-                Console.Write(b + " ");
-            }
+            Console.WriteLine(sys);
         }
     }
 }
