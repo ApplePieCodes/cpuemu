@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scythe Instruction Set</title>
+</head>
+<body>
+    <h1>
+        Scythe Instruction Set
+    </h1>
+    <h2>
+        The Scythe CPU Architecture Instruction Set
+    </h2>
+
+    <h5>[IMM(size): usage]: Immediate Arguement</h1>
+    <h5>[REG: usage]: Register Value Arguement</h2>
+
+    <h2>movb [IMM(byte): source] [REG: destination] (0x00)</h3>
+    <h4>Moves [source] to first byte in [destination].</h4>
+
+    <h2>movb [REG: source] [REG: destination] (0x01)</h3>
+    <h4>Moves first byte of [source] to first byte in [destination].</h4>
+
+    <h2>movw [IMM(word): source] [REG: destination] (0x02)</h3>
+    <h4>Moves [source] to first word in [destination].</h4>
+
+    <h2>movw [REG: source] [REG: destination] (0x03)</h3>
+    <h4>Moves first word of [source] to first word in [destination].</h4>
+
+    <h2>movd [IMM(dword): source] [REG: destination]</h3>
+    <h4>Moves [source] to first dword in [destination].</h4>
+
+    <h2>movd [REG: source] [REG: destination]</h3>
+    <h4>Moves first dword of [source] to first dword in [destination].</h4>
+
+    <h2>movq [IMM(qword): source] [REG: destination]</h3>
+    <h4>Moves [source] to [destination].</h4>
+
+    <h2>movq [REG: source] [REG: destination]</h3>
+    <h4>Moves [source] to [destination].</h4>
+</body>
+</html>
