@@ -1,13 +1,14 @@
 ﻿using System.Collections;
+using System.IO.MemoryMappedFiles;
 
 namespace cpuemu
 {
     public enum OPCode
     {
-        MovBRToR = 0x00, // Move First Byte in R to First Byte in R
-        MovBIToR = 0x01, // Move I (Byte) to First Byte in R
-        MovWRToR = 0x02, // Move First Word in R to First Word in R
-        MovWIToR = 0x03, // Move I (Word) to First Word in R
+        MovBIToR = 0x00, // Move I (Byte) to First Byte in R
+        MovBRToR = 0x01, // Move First Byte in R to First Byte in R
+        MovWIToR = 0x02, // Move I (Word) to First Word in R
+        MovWRToR = 0x03, // Move First Word in R to First Word in R
         MovDRToR = 0x04, // Move First DWord in R to First DWord in R
         MovDIToR = 0x05, // Move I (DWord) to First DWord in R
         MovRToR = 0x06, // Move R to R
@@ -28,6 +29,16 @@ namespace cpuemu
         SaveDIToI = 0x15, // Save I (DWord) to Address I
         SaveRToI = 0x16, // Save Value in R to Address I
         SaveIToI = 0x17, // Save I (QWord) to Address I
+        LoadIToR = 0x18, // Load QWord from address I to R
+        LoadRToR = 0x19, // Load QWord from address in R to R
+        LoadDIToR = 0x1A, // Load DWord from address I to R
+        LoadDRToR = 0x1B, // Load DWord from address in R to R
+        LoadWIToR = 0x1C, // Load Word from address I to R
+        LoadWRToR = 0x1D, // Load Word from address in R to R
+        LoadBIToR = 0x1E, // Load Byte from address I to R
+        LoadBRToR = 0x1F, // Load Byte from address in R to R
+        Inc = 0x20, // Increment the RCOUNT Register by 1
+        Dec = 0x21, // Decrement the RCOUNT Register by 1
     }
 
     public enum RegisterCode : byte // One Byte
@@ -42,18 +53,33 @@ namespace cpuemu
         R7 = 0x07,
         R8 = 0x08,
         R9 = 0x09,
-        Flags = 0x0A,
-        StackPointer = 0x0B,
-        StackStart = 0x0C,
-        StackEnd = 0x0D,
-        ProgramStartLocation = 0x0E,
-        ProgramCounter = 0x0F
+        RCOUNT = 0x0A,
+        Flags = 0x0B,
+        StackPointer = 0x0C,
+        StackStart = 0x0D,
+        StackEnd = 0x0E,
+        ProgramStartLocation = 0x0F,
+        ProgramCounter = 0x10
     }
 
     public class Instruction
     {
         public OPCode operation;
         public List<Arguement> args = [];
+
+        public Instruction(OPCode code, Arguement[] args)
+        {
+            operation = code;
+            foreach (var arg in args)
+            {
+                this.args.Add(arg);
+            }
+        }
+
+        public Instruction()
+        {
+            
+        }
     }
 
     public abstract class Arguement { }
@@ -68,21 +94,41 @@ namespace cpuemu
     public class ImmByte : Immidiate
     {
         public byte Value = 0x00;
+
+        public ImmByte(byte value)
+        {
+            Value = value;
+        }
     }
 
     public class ImmWord : Immidiate
     {
         public ushort Value = 0x00;
+
+        public ImmWord(ushort value)
+        {
+            Value = value;
+        }
     }
 
     public class ImmDWord : Immidiate
     {
         public uint Value = 0x00;
+
+        public ImmDWord(uint value)
+        {
+            this.Value = value;
+        }
     }
 
     public class ImmQWord : Immidiate
     {
         public ulong Value = 0x00;
+
+        public ImmQWord(ulong value)
+        {
+            Value = value;
+        }
     }
 
     public class CPU
@@ -97,6 +143,7 @@ namespace cpuemu
         public UInt64 R7 = 0;
         public UInt64 R8 = 0;
         public UInt64 R9 = 0;
+        public UInt64 RCOUNT = 0;
 
         public UInt64 Flags = 0;
         public UInt64 StackPointer = 0;
@@ -131,7 +178,8 @@ namespace cpuemu
     {
         public CPU Cpu;
         public byte[] Bootrom;
-        public byte[] Ram;
+        public MemoryMappedFile RamMMF;
+        public MemoryMappedViewAccessor Ram;
 
         public override string ToString()
         {
@@ -149,6 +197,7 @@ namespace cpuemu
             retstr += $"    R7: {Cpu.R7}\n";
             retstr += $"    R8: {Cpu.R8}\n";
             retstr += $"    R9: {Cpu.R9}\n";
+            retstr += $"    RCOUNT: {Cpu.RCOUNT}\n";
             retstr += $"    FLAGS: {Cpu.Flags}\n";
             retstr += $"    STACKPOINTER: {Cpu.StackPointer}\n";
             retstr += $"    STACKSTART: {Cpu.StackStart}\n";
@@ -160,13 +209,13 @@ namespace cpuemu
 
             int bytes = 0;
 
-            for (int i = 0; i < Ram.Length; i++)
+            for (int i = 0; i < Ram.Capacity; i++)
             {
                 if (bytes == 0)
                 {
                     retstr += "\n        ";
                 }
-                retstr += Ram[i];
+                retstr += Ram.ReadByte(i);
                 bytes++;
                 if (bytes == 8)
                 {
@@ -185,14 +234,16 @@ namespace cpuemu
             }
             Cpu = new CPU();
             Bootrom = rom;
-            Ram = new byte[ramsize];
+
+            RamMMF = MemoryMappedFile.CreateNew("RamFile.bin", ramsize);
+            Ram = RamMMF.CreateViewAccessor(0, ramsize, MemoryMappedFileAccess.ReadWrite);
         }
 
         public void Run()
         {
             LoadBootRom();
 
-            while (Cpu.ProgramCounter < (ulong)Ram.Length)
+            while (Cpu.ProgramCounter < (ulong)Ram.Capacity)
             {
                 var inst = ParseInstruction();
 
@@ -270,9 +321,146 @@ namespace cpuemu
                     case OPCode.SaveBRToI:
                         ExecuteSaveBRToI(inst);
                         break;
+                    case OPCode.LoadIToR:
+                        ExecuteLoadQIToR(inst);
+                        break;
+                    case OPCode.LoadRToR:
+                        ExecuteLoadQRToR(inst);
+                        break;
+                    case OPCode.LoadDIToR:
+                        ExecuteLoadDIToR(inst);
+                        break;
+                    case OPCode.LoadDRToR:
+                        ExecuteLoadDRToR(inst);
+                        break;
+                    case OPCode.LoadWIToR:
+                        ExecuteLoadWIToR(inst);
+                        break;
+                    case OPCode.LoadWRToR:
+                        ExecuteLoadWRToR(inst);
+                        break;
+                    case OPCode.LoadBIToR:
+                        ExecuteLoadBIToR(inst);
+                        break;
+                    case OPCode.LoadBRToR:
+                        ExecuteLoadBRToR(inst);
+                        break;
+                    case OPCode.Inc:
+                        Cpu.RCOUNT++;
+                        break;
+                    case OPCode.Dec:
+                        Cpu.RCOUNT--;
+                        break;
                 }
             }
         }
+
+        #region LoadInst
+        public void ExecuteLoadQIToR(Instruction inst)
+        {
+            ImmQWord source = inst.args[0] as ImmQWord;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = source.Value;
+
+            ulong value = Ram.ReadUInt64((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadIToR, [new ImmQWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadQRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = GetRegisterValue(source.Code);
+
+            ulong value = Ram.ReadUInt64((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadIToR, [new ImmQWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadDIToR(Instruction inst)
+        {
+            ImmDWord source = inst.args[0] as ImmDWord;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = source.Value;
+
+            uint value = Ram.ReadUInt32((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadDIToR, [new ImmDWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadDRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = GetRegisterValue(source.Code);
+
+            uint value = Ram.ReadUInt32((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadDIToR, [new ImmDWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadWIToR(Instruction inst)
+        {
+            ImmWord source = inst.args[0] as ImmWord;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = source.Value;
+
+            ushort value = Ram.ReadUInt16((long)address);
+
+            ExecuteMovWIToR(new Instruction(OPCode.LoadWIToR, [new ImmWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadWRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = GetRegisterValue(source.Code);
+
+            ushort value = Ram.ReadUInt16((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadWIToR, [new ImmWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadBIToR(Instruction inst)
+        {
+            ImmByte source = inst.args[0] as ImmByte;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = source.Value;
+
+            byte value = Ram.ReadByte((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadBIToR, [new ImmByte(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        public void ExecuteLoadBRToR(Instruction inst)
+        {
+            Register source = inst.args[0] as Register;
+            Register destination = inst.args[1] as Register;
+
+            ulong address = GetRegisterValue(source.Code);
+
+            byte value = Ram.ReadByte((long)address);
+
+            ExecuteMovQIToR(new Instruction(OPCode.LoadBIToR, [new ImmDWord(value), destination]));
+
+            SetRegisterValue(destination.Code, value);
+        }
+        #endregion
 
         #region SaveInst
         public void ExecuteSaveQIToR(Instruction inst)
@@ -282,7 +470,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 8);
+            Ram.Write((long)GetRegisterValue(destination.Code), source.Value);
         }
         public void ExecuteSaveQRToR(Instruction inst)
         {
@@ -291,7 +479,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 8);
+            Ram.Write((long)GetRegisterValue(destination.Code), GetRegisterValue(source.Code));
         }
         public void ExecuteSaveDIToR(Instruction inst)
         {
@@ -300,7 +488,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 4);
+            Ram.Write((long)GetRegisterValue(destination.Code), source.Value);
         }
         public void ExecuteSaveDRToR(Instruction inst)
         {
@@ -309,7 +497,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 4);
+            Ram.Write((long)GetRegisterValue(destination.Code), GetRegisterValue(source.Code));
         }
         public void ExecuteSaveWIToR(Instruction inst)
         {
@@ -318,7 +506,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 2);
+            Ram.Write((long)GetRegisterValue(destination.Code), source.Value);
         }
         public void ExecuteSaveWRToR(Instruction inst)
         {
@@ -327,21 +515,21 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            Array.Copy(bytes, 0, Ram, (long)GetRegisterValue(destination.Code), 2);
+            Ram.Write((long)GetRegisterValue(destination.Code), GetRegisterValue(source.Code));
         }
         public void ExecuteSaveBIToR(Instruction inst)
         {
             ImmByte source = inst.args[0] as ImmByte;
             Register destination = inst.args[1] as Register;
 
-            Ram[GetRegisterValue(destination.Code)] = source.Value;
+            Ram.Write((long)GetRegisterValue(destination.Code), source.Value);
         }
         public void ExecuteSaveBRToR(Instruction inst)
         {
             Register source = inst.args[0] as Register;
             Register destination = inst.args[1] as Register;
 
-            Ram[GetRegisterValue(destination.Code)] = BitConverter.GetBytes(GetRegisterValue(source.Code))[0];
+            Ram.Write((long)GetRegisterValue(destination.Code), GetRegisterValue(source.Code));
         }
         public void ExecuteSaveQIToI(Instruction inst)
         {
@@ -350,7 +538,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            Array.Copy(bytes, 0, Ram, (long)destination.Value, 8);
+            Ram.Write((long)destination.Value, source.Value);
         }
         public void ExecuteSaveQRToI(Instruction inst)
         {
@@ -359,7 +547,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            Array.Copy(bytes, 0, Ram, (long)destination.Value, 8);
+            Ram.Write((long)destination.Value, GetRegisterValue(source.Code));
         }
         public void ExecuteSaveDIToI(Instruction inst)
         {
@@ -368,7 +556,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            Array.Copy(bytes, 0, Ram, (long)destination.Value, 4);
+            Ram.Write((long)destination.Value, source.Value);
         }
         public void ExecuteSaveDRToI(Instruction inst)
         {
@@ -377,7 +565,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            Array.Copy(bytes, 0, Ram, (long)destination.Value, 4);
+            Ram.Write((long)destination.Value, GetRegisterValue(source.Code));
         }
         public void ExecuteSaveWIToI(Instruction inst)
         {
@@ -386,7 +574,7 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(source.Value);
 
-            Array.Copy(bytes, 0, Ram, (long)destination.Value, 2);
+            Ram.Write((long)destination.Value, source.Value);
         }
         public void ExecuteSaveWRToI(Instruction inst)
         {
@@ -395,21 +583,21 @@ namespace cpuemu
 
             byte[] bytes = BitConverter.GetBytes(GetRegisterValue(source.Code));
 
-            Array.Copy(bytes, 0, Ram, (long)destination.Value, 2);
+            Ram.Write((long)destination.Value, GetRegisterValue(source.Code));
         }
         public void ExecuteSaveBIToI(Instruction inst)
         {
             ImmByte source = inst.args[0] as ImmByte;
             ImmQWord destination = inst.args[1] as ImmQWord;
 
-            Ram[destination.Value] = source.Value;
+            Ram.Write((long)destination.Value, source.Value);
         }
         public void ExecuteSaveBRToI(Instruction inst)
         {
             Register source = inst.args[0] as Register;
             ImmQWord destination = inst.args[1] as ImmQWord;
 
-            Ram[destination.Value] = BitConverter.GetBytes(GetRegisterValue(source.Code))[0];
+            Ram.Write((long)destination.Value, GetRegisterValue(source.Code));
         }
         #endregion
 
@@ -526,14 +714,12 @@ namespace cpuemu
         }
         #endregion
 
+        #region Parsing
         public Instruction ParseInstruction()
         {
-            OPCode opcode = (OPCode)Ram[Cpu.ProgramCounter];  // Cast to OPCode
+            OPCode opcode = (OPCode)Ram.ReadByte((long)Cpu.ProgramCounter);  // Cast to OPCode
 
-            Instruction inst = new()
-            {
-                operation = opcode 
-            };
+            Instruction inst = new(opcode, []);
 
             Cpu.ProgramCounter++;
 
@@ -635,6 +821,42 @@ namespace cpuemu
                     inst.args.Add(ParseRegister());
                     inst.args.Add(ParseImmediateQ());
                     break;
+                case OPCode.LoadIToR:
+                    inst.args.Add(ParseImmediateQ());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadDIToR:
+                    inst.args.Add(ParseImmediateD());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadDRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadWIToR:
+                    inst.args.Add(ParseImmediateW());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadWRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadBIToR:
+                    inst.args.Add(ParseImmediateB());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.LoadBRToR:
+                    inst.args.Add(ParseRegister());
+                    inst.args.Add(ParseRegister());
+                    break;
+                case OPCode.Inc:
+                    break;
+                case OPCode.Dec:
+                    break;
             }
 
             return inst;
@@ -642,9 +864,7 @@ namespace cpuemu
 
         public ImmByte ParseImmediateB()
         {
-            ImmByte imm = new();
-
-            imm.Value = Ram[Cpu.ProgramCounter];
+            ImmByte imm = new(Ram.ReadByte((long)Cpu.ProgramCounter));
 
             Cpu.ProgramCounter++;
 
@@ -652,9 +872,7 @@ namespace cpuemu
         }
         public ImmWord ParseImmediateW()
         {
-            ImmWord imm = new();
-
-            imm.Value = BitConverter.ToUInt16(Ram, (int)Cpu.ProgramCounter);
+            ImmWord imm = new(Ram.ReadUInt16((long)Cpu.ProgramCounter));
 
             Cpu.ProgramCounter += 2;
 
@@ -662,9 +880,7 @@ namespace cpuemu
         }
         public ImmDWord ParseImmediateD()
         {
-            ImmDWord imm = new();
-
-            imm.Value = BitConverter.ToUInt32(Ram, (int)Cpu.ProgramCounter);
+            ImmDWord imm = new(Ram.ReadUInt32((long)Cpu.ProgramCounter));
 
             Cpu.ProgramCounter += 4;
 
@@ -672,9 +888,7 @@ namespace cpuemu
         }
         public ImmQWord ParseImmediateQ()
         {
-            ImmQWord imm = new();
-
-            imm.Value = BitConverter.ToUInt64(Ram, (int)Cpu.ProgramCounter);
+            ImmQWord imm = new(Ram.ReadUInt64((long)Cpu.ProgramCounter));
 
             Cpu.ProgramCounter += 8;
 
@@ -683,7 +897,7 @@ namespace cpuemu
 
         public Register ParseRegister()
         {
-            RegisterCode regcode = (RegisterCode)Ram[Cpu.ProgramCounter];
+            RegisterCode regcode = (RegisterCode)Ram.ReadByte((long)Cpu.ProgramCounter);
 
             Register reg = new()
             {
@@ -694,6 +908,7 @@ namespace cpuemu
 
             return reg;
         }
+        #endregion
 
         private void SetRegisterValue(RegisterCode code, ulong value)
         {
@@ -728,6 +943,9 @@ namespace cpuemu
                     break;
                 case RegisterCode.R9:
                     Cpu.R9 = value;
+                    break;
+                case RegisterCode.RCOUNT:
+                    Cpu.RCOUNT = value;
                     break;
                 case RegisterCode.Flags:
                     Cpu.Flags = value;
@@ -764,6 +982,7 @@ namespace cpuemu
                 RegisterCode.R7 => Cpu.R7,
                 RegisterCode.R8 => Cpu.R8,
                 RegisterCode.R9 => Cpu.R9,
+                RegisterCode.RCOUNT => Cpu.RCOUNT,
                 RegisterCode.Flags => Cpu.Flags,
                 RegisterCode.StackPointer => Cpu.StackPointer,
                 RegisterCode.StackStart => Cpu.StackStart,
@@ -774,17 +993,16 @@ namespace cpuemu
             };
         }
 
-
         public bool LoadBootRom()
         {
-            if (Bootrom.Length > Ram.Length)
+            if (Bootrom.Length > Ram.Capacity)
             {
                 Console.WriteLine("Cannot Save bootrom because ROM is larger than RAM Size.");
                 return false;
             }
 
-            int pos = Ram.Length - Bootrom.Length;
-            Array.Copy(Bootrom, 0, Ram, pos, Bootrom.Length);
+            long pos = Ram.Capacity - Bootrom.Length;
+            Ram.WriteArray<byte>((int)pos, Bootrom, 0, Bootrom.Length);
 
             Cpu.ProgramStartLocation = (UInt64)pos;
             Cpu.ProgramCounter = Cpu.ProgramStartLocation;
@@ -797,7 +1015,7 @@ namespace cpuemu
     {
         public static void Main()
         {
-            System sys = new([]); // Move Hello To Registers
+            System sys = new(File.ReadAllBytes("C:\\Users\\Developer\\source\\repos\\ApplePieCodes\\cpuemu\\cpuemu\\TestRom.bin"), 80); // Move 21 To RAM 0
             sys.Run();
 
             Console.WriteLine(sys);
